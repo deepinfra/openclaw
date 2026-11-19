@@ -582,6 +582,7 @@ export async function handleControlUiHttpRequest(
   // WASM relaxation whenever the terminal is enabled (the default) and stays
   // strict once operators opt out with gateway.terminal.enabled: false.
   const terminalEnabled = opts?.terminalEnabled ?? isTerminalConfigEnabled(opts?.config);
+  const frameAncestors = opts?.config?.gateway?.controlUi?.frameAncestors;
   const route = classifyControlUiRequest({
     basePath,
     pathname,
@@ -593,19 +594,19 @@ export async function handleControlUiHttpRequest(
     return false;
   }
   if (route.kind === "not-found") {
-    applyControlUiSecurityHeaders(res, getRemoteControlUiIngressContext(req));
+    applyControlUiSecurityHeaders(res, getRemoteControlUiIngressContext(req), frameAncestors);
     respondControlUiNotFound(res);
     return true;
   }
   if (route.kind === "redirect") {
-    applyControlUiSecurityHeaders(res, getRemoteControlUiIngressContext(req));
+    applyControlUiSecurityHeaders(res, getRemoteControlUiIngressContext(req), frameAncestors);
     res.statusCode = 302;
     res.setHeader("Location", route.location);
     res.end();
     return true;
   }
 
-  applyControlUiSecurityHeaders(res, getRemoteControlUiIngressContext(req));
+  applyControlUiSecurityHeaders(res, getRemoteControlUiIngressContext(req), frameAncestors);
 
   if (
     isControlUiSharePath(pathname, basePath) &&
@@ -796,6 +797,7 @@ export async function handleControlUiHttpRequest(
           opts?.isSessionEntryCurrent?.() !== false,
         opts?.auth?.mode === "trusted-proxy",
         bootstrap?.config,
+        frameAncestors,
       );
       return true;
     }

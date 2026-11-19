@@ -68,6 +68,78 @@ it("defers shared-secret failures when an explicit device token is also present"
   expect(rateLimiter.recordFailure).not.toHaveBeenCalled();
 });
 
+// DeepInfra fork: proxy/iframe clients carry the shared token as a Bearer
+// Authorization header on the upgrade request instead of in the connect frame.
+function resolveBearerHeaderAuthState(
+  authorization: string | undefined,
+  params: Partial<ResolveConnectAuthStateParams> = {},
+) {
+  return resolveTokenAuthState({
+    hasDeviceIdentity: false,
+    req: {
+      headers: authorization === undefined ? {} : { authorization },
+      socket: { remoteAddress: CLIENT_IP },
+    } as never,
+    ...params,
+  });
+}
+
+it("token-mode: accepts a Bearer Authorization header when the frame omits a token", async () => {
+  const state = await resolveBearerHeaderAuthState("Bearer correct-secret");
+  expect(state.authOk).toBe(true);
+  expect(state.authMethod).toBe("token");
+});
+
+it("token-mode: frame token wins when it matches (header ignored)", async () => {
+  const state = await resolveBearerHeaderAuthState("Bearer bad", {
+    connectAuth: { token: "correct-secret" },
+  });
+  expect(state.authOk).toBe(true);
+  expect(state.authMethod).toBe("token");
+});
+
+it("token-mode: frame token wins on mismatch even when the header carries a valid token", async () => {
+  const state = await resolveBearerHeaderAuthState("Bearer correct-secret", {
+    connectAuth: { token: "wrong" },
+  });
+  expect(state.authOk).toBe(false);
+  expect(state.authResult.reason).toBe("token_mismatch");
+});
+
+it.each([
+  ["no Authorization header", undefined],
+  ["Basic scheme", "Basic something"],
+  ["Bearer with no token", "Bearer"],
+  ["Bearer with whitespace-only token", "Bearer    "],
+])("token-mode: malformed header ignored — %s", async (_label, authorization) => {
+  const state = await resolveBearerHeaderAuthState(authorization);
+  expect(state.authOk).toBe(false);
+  expect(state.authResult.reason).toBe("token_missing");
+});
+
+it("token-mode: Bearer scheme is case-insensitive", async () => {
+  const state = await resolveBearerHeaderAuthState("bearer correct-secret");
+  expect(state.authOk).toBe(true);
+  expect(state.authMethod).toBe("token");
+});
+
+it("password-mode: Authorization header is ignored", async () => {
+  const state = await resolveBearerHeaderAuthState("Bearer ignored-value", {
+    resolvedAuth: { mode: "password", password: "pw", allowTailscale: false },
+    connectAuth: { password: "pw" },
+  });
+  expect(state.authOk).toBe(true);
+  expect(state.authMethod).toBe("password");
+});
+
+it("device-token fallback: HTTP header does not populate deviceTokenCandidate", async () => {
+  const state = await resolveBearerHeaderAuthState("Bearer correct-secret", {
+    hasDeviceIdentity: true,
+  });
+  expect(state.deviceTokenCandidate).toBeUndefined();
+  expect(state.deviceTokenCandidateSource).toBeUndefined();
+});
+
 it("does not apply shared-secret lockouts to explicit device-token-only handshakes", async () => {
   const rateLimiter = createLimiter({ allowed: false });
 

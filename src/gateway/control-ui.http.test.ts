@@ -358,6 +358,24 @@ async function withPairedOperatorDeviceToken<T>(
   });
 }
 
+// DeepInfra fork: the direct index document and the SPA router fallback both resolve to
+// index.html; both must carry the configured embed origins.
+it.each([
+  { url: "/", headers: { host: "gateway.example.test" } },
+  { url: "/chat/session-1", headers: { host: "gateway.example.test", accept: "text/html" } },
+])("allows configured frame-ancestors and omits X-Frame-Options on $url", async (request) => {
+  const reply = await runControlUiRequest(await createControlUiRoot(), request.url, {
+    headers: request.headers,
+    config: { gateway: { controlUi: { frameAncestors: ["https://console.example.com"] } } },
+  });
+  expect(reply.handled).toBe(true);
+  expect(reply.headers).not.toHaveProperty("X-Frame-Options");
+  const csp = String(reply.headers["Content-Security-Policy"]);
+  expect(csp).toContain("frame-ancestors https://console.example.com");
+  expect(csp).not.toContain("frame-ancestors 'none'");
+  expect(reply.text).toContain("<html");
+});
+
 it("sets security headers for Control UI responses", async () => {
   const script = "console.log('inline');";
   const tmp = await createControlUiRoot(`<html><script>${script}</script></html>`);

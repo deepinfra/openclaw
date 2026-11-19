@@ -13,7 +13,11 @@ import {
   type ControlUiEnvironment,
   type ControlUiBootstrapConfig,
 } from "./control-ui-contract.js";
-import { buildControlUiCspHeader, computeInlineScriptHashes } from "./control-ui-csp.js";
+import {
+  buildControlUiCspHeader,
+  computeInlineScriptHashes,
+  resolveControlUiFrameAncestors,
+} from "./control-ui-csp.js";
 import {
   controlUiPreloadLinks,
   selectControlUiRoutePreloads,
@@ -64,6 +68,7 @@ export async function serveControlUiIndexHtml(
   isSessionEntryCurrent?: () => boolean,
   proxySessionEntry = false,
   bootstrapConfig?: ControlUiBootstrapConfig,
+  configuredFrameAncestors?: readonly string[],
 ) {
   const ingress = getRemoteControlUiIngressContext(req);
   const normalizedBasePath = normalizeControlUiBasePath(basePath);
@@ -122,7 +127,7 @@ export async function serveControlUiIndexHtml(
       inlineScriptHashes: hashes,
       allowWasm,
       portalHost: req.headers.host,
-      frameAncestors: ingress?.frameAncestors,
+      frameAncestors: resolveControlUiFrameAncestors(ingress, configuredFrameAncestors),
     }),
   );
   res.setHeader("Content-Type", "text/html; charset=utf-8");
